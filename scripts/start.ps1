@@ -1,4 +1,4 @@
-param([string]$Binary)
+﻿param([string]$Binary)
 
 $ErrorActionPreference = "Stop"
 if (-not $Binary) {

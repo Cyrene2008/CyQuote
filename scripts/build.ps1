@@ -1,4 +1,4 @@
-# 本地构建 Go 与 Rust 的 Windows/Linux 二进制到 bin/。
+﻿# 本地构建 Go 与 Rust 的 Windows/Linux 二进制到 bin/。
 # 说明：Rust 的 Linux 目标需要本地已配置交叉编译工具链，常规发布由 GitHub Actions 完成。
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path "$PSScriptRoot\..").Path

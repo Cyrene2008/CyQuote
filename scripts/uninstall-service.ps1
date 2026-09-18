@@ -1,4 +1,4 @@
-param([string]$TaskName = "CyQuote")
+﻿param([string]$TaskName = "CyQuote")
 
 $ErrorActionPreference = "SilentlyContinue"
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false

@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$Binary,
   [string]$TaskName = "CyQuote"
 )
