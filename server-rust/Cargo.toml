@@ -1,0 +1,17 @@
+[package]
+name = "cyquote"
+version = "0.1.0"
+edition = "2021"
+description = "CyQuote API server (Rust)"
+license = "GPL-3.0-only"
+
+[[bin]]
+name = "cyquote"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+
+[profile.release]
+lto = true
+strip = true

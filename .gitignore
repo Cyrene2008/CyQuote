@@ -1,0 +1,14 @@
+# Build outputs
+bin/
+server-rust/target/
+server-go/cyquote
+server-go/cyquote.exe
+*.exe
+
+# Runtime
+config.json
+cyquote.log
+
+# OS
+.DS_Store
+Thumbs.db

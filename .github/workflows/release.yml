@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Go server
+        shell: bash
+        working-directory: server-go
+        run: |
+          set -euo pipefail
+          mkdir -p ../bin/windows ../bin/linux
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../bin/windows/cyquote.exe .
+          else
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../bin/linux/cyquote .
+          fi
+
+      - name: Build Rust server
+        shell: bash
+        working-directory: server-rust
+        run: |
+          set -euo pipefail
+          cargo build --release
+          mkdir -p ../bin/windows ../bin/linux
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            cp target/release/cyquote.exe ../bin/windows/cyquote-rust.exe
+          else
+            cp target/release/cyquote ../bin/linux/cyquote-rust
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyquote-${{ matrix.platform }}
+          path: bin/${{ matrix.platform }}/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout scripts
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: assets
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in assets/cyquote-*; do
+            platform="$(basename "$dir")"
+            cp config.example.json "$dir/"
+            cp -r scripts "$dir/"
+            (cd "$dir" && zip -r "../${platform}.zip" .)
+          done
+          ls -la assets
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: CyQuote ${{ env.RELEASE_TAG }}
+          files: assets/*.zip
+          generate_release_notes: true

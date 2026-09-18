@@ -1,0 +1,6 @@
+{
+  "listen": "127.0.0.1",
+  "port": 9093,
+  "quotesFile": "data/quotes.jsonc",
+  "allowOrigin": "*"
+}
