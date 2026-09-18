@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -49,10 +50,13 @@ const exampleCatalog = `// CyQuote 语录数据示例
 }
 `
 
-var catalog = map[string][]Quote{}
-var categories = []string{}
+var (
+	catalogMu  sync.RWMutex
+	catalog    = map[string][]Quote{}
+	categories = []string{}
+	total      int
+)
 var config Config
-var total int
 var random = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func executableDir() string {
@@ -199,7 +203,7 @@ func loadCatalog(path string) error {
 	}
 	next := map[string][]Quote{}
 	nextCategories := []string{}
-	total = 0
+	nextTotal := 0
 	for category, quotes := range parsed {
 		valid := make([]Quote, 0, len(quotes))
 		for _, quote := range quotes {
@@ -213,11 +217,44 @@ func loadCatalog(path string) error {
 		}
 		next[category] = valid
 		nextCategories = append(nextCategories, category)
-		total += len(valid)
+		nextTotal += len(valid)
 	}
+	catalogMu.Lock()
 	catalog = next
 	categories = nextCategories
+	total = nextTotal
+	catalogMu.Unlock()
 	return nil
+}
+
+func snapshot() (map[string][]Quote, []string, int) {
+	catalogMu.RLock()
+	defer catalogMu.RUnlock()
+	return catalog, categories, total
+}
+
+func watchCatalog(path string) {
+	var lastModified time.Time
+	for range time.Tick(time.Second) {
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Equal(lastModified) {
+			continue
+		}
+		if lastModified.IsZero() {
+			lastModified = info.ModTime()
+			continue
+		}
+		if err := loadCatalog(path); err != nil {
+			logLine("热更新失败：" + err.Error())
+			continue
+		}
+		lastModified = info.ModTime()
+		_, list, count := snapshot()
+		logLine(fmt.Sprintf("语录已热更新：%d 个分类 / %d 条", len(list), count))
+	}
 }
 
 func respond(writer http.ResponseWriter, status int, body any) {
@@ -230,7 +267,7 @@ func respond(writer http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(writer).Encode(body)
 }
 
-func selectedQuotes(request *http.Request) []string {
+func selectedQuotes(request *http.Request, pool map[string][]Quote, names []string) []string {
 	requested := strings.Split(request.URL.Query().Get("category"), ",")
 	selected := []string{}
 	for _, item := range requested {
@@ -238,27 +275,28 @@ func selectedQuotes(request *http.Request) []string {
 		if name == "" {
 			continue
 		}
-		if _, ok := catalog[name]; ok {
+		if _, ok := pool[name]; ok {
 			selected = append(selected, name)
 		}
 	}
 	if len(selected) == 0 {
-		return categories
+		return names
 	}
 	return selected
 }
 
 func handleQuote(writer http.ResponseWriter, request *http.Request) {
-	selected := selectedQuotes(request)
-	pool := []Quote{}
+	pool, names, _ := snapshot()
+	selected := selectedQuotes(request, pool, names)
+	quotes := []Quote{}
 	for _, category := range selected {
-		pool = append(pool, catalog[category]...)
+		quotes = append(quotes, pool[category]...)
 	}
-	if len(pool) == 0 {
+	if len(quotes) == 0 {
 		respond(writer, http.StatusNotFound, map[string]string{"error": "没有可用的语录"})
 		return
 	}
-	quote := pool[random.Intn(len(pool))]
+	quote := quotes[random.Intn(len(quotes))]
 	respond(writer, http.StatusOK, map[string]any{
 		"value":    quote.Value,
 		"author":   quote.Author,
@@ -269,17 +307,19 @@ func handleQuote(writer http.ResponseWriter, request *http.Request) {
 }
 
 func handleCategories(writer http.ResponseWriter) {
-	respond(writer, http.StatusOK, map[string]any{"categories": categories})
+	_, names, _ := snapshot()
+	respond(writer, http.StatusOK, map[string]any{"categories": names})
 }
 
 func handleCount(writer http.ResponseWriter, request *http.Request) {
+	pool, _, totalQuotes := snapshot()
 	requested := strings.TrimSpace(request.URL.Query().Get("category"))
 	counts := map[string]int{}
-	for category, quotes := range catalog {
+	for category, quotes := range pool {
 		counts[category] = len(quotes)
 	}
 	if requested == "" {
-		respond(writer, http.StatusOK, map[string]any{"total": total, "categories": counts})
+		respond(writer, http.StatusOK, map[string]any{"total": totalQuotes, "categories": counts})
 		return
 	}
 	if strings.Contains(requested, ",") {
@@ -295,7 +335,8 @@ func handleCount(writer http.ResponseWriter, request *http.Request) {
 }
 
 func handleHealth(writer http.ResponseWriter) {
-	respond(writer, http.StatusOK, map[string]any{"status": "ok", "categories": len(categories), "quotes": total})
+	_, names, totalQuotes := snapshot()
+	respond(writer, http.StatusOK, map[string]any{"status": "ok", "categories": len(names), "quotes": totalQuotes})
 }
 
 func route(writer http.ResponseWriter, request *http.Request) {
@@ -328,11 +369,14 @@ func route(writer http.ResponseWriter, request *http.Request) {
 func main() {
 	base := executableDir()
 	config = loadConfig(base)
-	if err := loadCatalog(filepath.Join(base, config.QuotesFile)); err != nil {
+	quotesPath := filepath.Join(base, config.QuotesFile)
+	if err := loadCatalog(quotesPath); err != nil {
 		logLine("载入语录失败：" + err.Error())
 	}
+	go watchCatalog(quotesPath)
 	address := config.Listen + ":" + strconv.Itoa(config.Port)
-	logLine(fmt.Sprintf("CyQuote 已启动：http://%s（%d 个分类 / %d 条语录）", address, len(categories), total))
+	_, names, totalQuotes := snapshot()
+	logLine(fmt.Sprintf("CyQuote 已启动：http://%s（%d 个分类 / %d 条语录）", address, len(names), totalQuotes))
 	server := &http.Server{Addr: address, Handler: http.HandlerFunc(route)}
 	if err := server.ListenAndServe(); err != nil {
 		logLine("服务退出：" + err.Error())

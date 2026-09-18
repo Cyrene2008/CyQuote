@@ -1,6 +1,5 @@
 <script setup>
 import { RouterLink, RouterView } from 'vue-router'
-import { isLight, toggleTheme } from './theme'
 </script>
 
 <template>
@@ -19,9 +18,6 @@ import { isLight, toggleTheme } from './theme'
           <RouterLink to="/about">关于</RouterLink>
         </nav>
         <div class="nav-actions">
-          <button type="button" class="icon-button" :aria-label="isLight ? '切换深色主题' : '切换浅色主题'" @click="toggleTheme">
-            <FluentIcon :icon="isLight ? 'weather-moon-20-regular' : 'weather-sunny-20-regular'" :width="18" />
-          </button>
           <FluentHyperlinkButton class="nav-github" href="https://github.com/Cyrene2008/CyQuote" target="_blank"><FluentIcon icon="code-20-regular" :width="16" /><span>GitHub</span></FluentHyperlinkButton>
         </div>
       </div>

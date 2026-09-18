@@ -1,6 +1,19 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 
 export const API_BASE = '/api/v1/quote'
+const FALLBACK_BASE = 'https://quote.cyrene.hk/api/v1/quote'
+
+async function fetchApi(path) {
+  try {
+    const response = await fetch(`${API_BASE}${path}`, { cache: 'no-store' })
+    if (!response.ok) throw new Error(String(response.status))
+    return await response.json()
+  } catch (error) {
+    const response = await fetch(`${FALLBACK_BASE}${path}`, { cache: 'no-store' })
+    if (!response.ok) throw error
+    return await response.json()
+  }
+}
 
 export function useQuote() {
   const quote = ref(null)
@@ -13,9 +26,7 @@ export function useQuote() {
     quoteState.value = 'loading'
     try {
       const suffix = activeCategory.value ? `&category=${encodeURIComponent(activeCategory.value)}` : ''
-      const response = await fetch(`${API_BASE}?format=json${suffix}`, { cache: 'no-store' })
-      if (!response.ok) throw new Error(String(response.status))
-      quote.value = await response.json()
+      quote.value = await fetchApi(`?format=json${suffix}`)
       quoteState.value = 'ready'
     } catch {
       if (!quote.value) quoteState.value = 'error'
@@ -24,9 +35,8 @@ export function useQuote() {
 
   async function loadStats() {
     try {
-      const response = await fetch(`${API_BASE}/count`, { cache: 'no-store' })
-      if (!response.ok) throw new Error(String(response.status))
-      stats.value = await response.json()
+      const data = await fetchApi('/count')
+      stats.value = data
     } catch {
       stats.value = null
     }

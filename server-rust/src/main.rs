@@ -7,7 +7,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Map, Value};
@@ -16,11 +16,38 @@ const DEFAULT_CONFIG: &str = "{\n  \"listen\": \"127.0.0.1\",\n  \"port\": 9093,
 
 const EXAMPLE_CATALOG: &str = "// CyQuote 语录数据示例\n// 顶层键为分类名，值为语录数组；每条包含 value（正文）、author（作者，可省略）、from（出处，可省略）。\n// 支持 // 行注释与 /* 块注释 */，也容忍多余的尾逗号。\n{\n  \"励志\": [\n    { \"value\": \"路虽远，行则将至；事虽难，做则必成。\" },\n    { \"value\": \"不积跬步，无以至千里；不积小流，无以成江海。\", \"author\": \"荀子\", \"from\": \"《劝学》\" }\n  ],\n  \"温柔\": [\n    { \"value\": \"因为世界对我温柔，我就长成温柔的模样。\", \"author\": \"德谬歌\", \"from\": \"HSR\" }\n  ]\n}\n";
 
-struct State {
-    allow_origin: String,
+struct Catalog {
     catalog: Map<String, Value>,
     categories: Vec<String>,
     total: usize,
+}
+
+struct State {
+    allow_origin: String,
+    quotes_file: PathBuf,
+    data: RwLock<Catalog>,
+    last_modified: Mutex<Option<SystemTime>>,
+}
+
+fn maybe_reload(state: &State) {
+    let Ok(metadata) = fs::metadata(&state.quotes_file) else { return };
+    let modified = metadata.modified().ok();
+    {
+        let last = state.last_modified.lock().unwrap();
+        if *last == modified {
+            return;
+        }
+    }
+    let (catalog, categories, total) = load_catalog(&state.quotes_file);
+    if catalog.is_empty() {
+        return;
+    }
+    let mut data = state.data.write().unwrap();
+    data.catalog = catalog;
+    data.categories = categories;
+    data.total = total;
+    *state.last_modified.lock().unwrap() = modified;
+    log_line(&format!("语录已热更新：{} 个分类 / {} 条", data.categories.len(), data.total));
 }
 
 fn executable_dir() -> PathBuf {
@@ -314,6 +341,8 @@ fn handle_client(mut stream: TcpStream, state: &Arc<State>, seed: &mut u64) {
         respond(&mut stream, state, 405, &json!({ "error": "仅支持 GET" }));
         return;
     }
+    maybe_reload(state);
+    let data = state.data.read().unwrap();
     let path = target.split('?').next().unwrap_or("/").trim_end_matches('/').to_string();
     match path.as_str() {
         "" | "/quote" => {
@@ -321,16 +350,16 @@ fn handle_client(mut stream: TcpStream, state: &Arc<State>, seed: &mut u64) {
             let mut selected: Vec<String> = Vec::new();
             for item in requested.split(',') {
                 let name = item.trim();
-                if !name.is_empty() && state.catalog.contains_key(name) && !selected.iter().any(|value| value == name) {
+                if !name.is_empty() && data.catalog.contains_key(name) && !selected.iter().any(|value| value == name) {
                     selected.push(name.to_string());
                 }
             }
             if selected.is_empty() {
-                selected = state.categories.clone();
+                selected = data.categories.clone();
             }
             let mut pool: Vec<&Value> = Vec::new();
             for category in &selected {
-                if let Some(list) = state.catalog.get(category).and_then(Value::as_array) {
+                if let Some(list) = data.catalog.get(category).and_then(Value::as_array) {
                     pool.extend(list.iter());
                 }
             }
@@ -353,18 +382,18 @@ fn handle_client(mut stream: TcpStream, state: &Arc<State>, seed: &mut u64) {
             );
         }
         "/categories" => {
-            respond(&mut stream, state, 200, &json!({ "categories": state.categories }));
+            respond(&mut stream, state, 200, &json!({ "categories": data.categories }));
         }
         "/count" => {
             let requested = query_param(target, "category");
             let mut counts = BTreeMap::new();
-            for category in &state.categories {
-                if let Some(list) = state.catalog.get(category).and_then(Value::as_array) {
+            for category in &data.categories {
+                if let Some(list) = data.catalog.get(category).and_then(Value::as_array) {
                     counts.insert(category.clone(), list.len());
                 }
             }
             if requested.is_empty() {
-                respond(&mut stream, state, 200, &json!({ "total": state.total, "categories": counts }));
+                respond(&mut stream, state, 200, &json!({ "total": data.total, "categories": counts }));
             } else if requested.contains(',') {
                 respond(&mut stream, state, 400, &json!({ "error": "一次只能查询一个分类" }));
             } else if let Some(count) = counts.get(&requested) {
@@ -374,7 +403,7 @@ fn handle_client(mut stream: TcpStream, state: &Arc<State>, seed: &mut u64) {
             }
         }
         "/health" => {
-            respond(&mut stream, state, 200, &json!({ "status": "ok", "categories": state.categories.len(), "quotes": state.total }));
+            respond(&mut stream, state, 200, &json!({ "status": "ok", "categories": data.categories.len(), "quotes": data.total }));
         }
         _ => respond(&mut stream, state, 404, &json!({ "error": "未知路径" })),
     }
@@ -384,7 +413,13 @@ fn main() {
     let base = executable_dir();
     let (listen, port, quotes_file, allow_origin) = load_config(&base);
     let (catalog, categories, total) = load_catalog(&quotes_file);
-    let state = Arc::new(State { allow_origin, catalog, categories, total });
+    let last_modified = fs::metadata(&quotes_file).ok().and_then(|metadata| metadata.modified().ok());
+    let state = Arc::new(State {
+        allow_origin,
+        quotes_file,
+        data: RwLock::new(Catalog { catalog, categories, total }),
+        last_modified: Mutex::new(last_modified),
+    });
     let address = format!("{}:{}", listen, port);
     let listener = match TcpListener::bind(&address) {
         Ok(listener) => listener,
@@ -393,7 +428,10 @@ fn main() {
             return;
         }
     };
-    log_line(&format!("CyQuote 已启动：http://{}（{} 个分类 / {} 条语录）", address, state.categories.len(), state.total));
+    {
+        let data = state.data.read().unwrap();
+        log_line(&format!("CyQuote 已启动：http://{}（{} 个分类 / {} 条语录）", address, data.categories.len(), data.total));
+    }
     let mut seed = SystemTime::now().duration_since(UNIX_EPOCH).map(|value| value.as_nanos() as u64).unwrap_or(88172645463325252) | 1;
     for connection in listener.incoming() {
         if let Ok(stream) = connection {

@@ -1,20 +1,4 @@
-:root:not(.light):not(.theme-light) {
-  color-scheme: dark;
-  --fluent-accent: #ea5ec1;
-  --accent: #ea5ec1;
-  --bg-base: #241722;
-  --bg-card: rgba(62, 38, 54, .7);
-  --bg-card-solid: #362131;
-  --bg-hover: #402838;
-  --text-primary: #f7e6f1;
-  --text-secondary: #e0c0d3;
-  --text-muted: #b287a1;
-  --border-default: rgba(234, 94, 193, .16);
-  --border-subtle: rgba(234, 94, 193, .09);
-  --border-strong: rgba(234, 94, 193, .28);
-}
-
-:root.light {
+:root {
   color-scheme: light;
   --fluent-accent: #ea5ec1;
   --accent: #ea5ec1;
@@ -201,3 +185,8 @@ main { width: min(1120px, 100%); margin: 0 auto; padding: 0 22px 60px; }
 .chip-primary { color: #fff; border-color: var(--accent); background: var(--accent); }
 .chip-primary:hover { color: #fff; border-color: var(--accent); background: color-mix(in srgb, var(--accent), black 8%); }
 @media (max-width: 720px) { .trial-params { grid-template-columns: 1fr; } }
+
+.quote-body { overflow: hidden; transition: height .28s cubic-bezier(.2, .8, .2, 1); }
+.quote-inner { display: block; }
+.quote-text.is-typing::after { display: inline-block; margin-left: 4px; color: var(--accent); content: '♪'; animation: landing-blink .9s steps(1) infinite; }
+@keyframes landing-blink { 50% { opacity: 0; } }
