@@ -38,7 +38,7 @@ onUnmounted(() => heightObserver?.disconnect())
           </template>
           <p v-else-if="quoteState === 'error'" class="quote-text muted">暂时无法获取语录，请稍后再试。</p>
           <p v-else class="quote-text muted">正在获取语录…</p>
-          <span class="quote-hint">♪ 点击换一句 · 每 15 秒自动刷新</span>
+          <span class="quote-hint">♪ 点击换一句</span>
         </div>
       </div>
     </FluentCard>

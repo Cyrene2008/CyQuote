@@ -55,7 +55,7 @@ export function useQuote() {
   onMounted(() => {
     refreshQuote()
     loadStats()
-    rotationTimer = window.setInterval(refreshQuote, 15000)
+    rotationTimer = window.setInterval(refreshQuote, 180000)
   })
 
   onUnmounted(() => window.clearInterval(rotationTimer))
