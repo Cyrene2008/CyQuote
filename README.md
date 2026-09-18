@@ -11,8 +11,12 @@ CyQuote 是 [CyTime 昔时时钟](https://time.cyrene.hk) 的语录服务端，�
 
 ## 快速开始
 
-1. 从 [Releases](../../releases) 下载对应平台的二进制（Go 或 Rust 任选其一）。
-2. 放入任意目录，直接运行：
+1. 从 [Releases](../../releases) 下载对应平台与实现的压缩包（Go / Rust 任选其一）：
+
+   - `cyquote-windows-go.zip` / `cyquote-windows-rust.zip`
+   - `cyquote-linux-go.zip` / `cyquote-linux-rust.zip`
+
+2. 解压后直接运行其中的 `cyquote`（Windows 为 `cyquote.exe`）：
 
 ```bash
 ./cyquote            # Windows: cyquote.exe
@@ -80,7 +84,7 @@ location /api/v1/quote/ {
 
 ## 服务与守护脚本
 
-脚本位于 `scripts/`：
+脚本位于压缩包内的 `scripts/`（仓库开发时为根目录 `scripts/`），会自动在同级目录/`bin` 目录中查找 `cyquote` 二进制：
 
 - Windows（PowerShell）
   - `install-service.ps1`：注册登录自启计划任务并立即启动（优先最高权限，失败自动降级当前用户）

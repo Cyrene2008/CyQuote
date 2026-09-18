@@ -1,6 +1,6 @@
 [package]
 name = "cyquote"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "CyQuote API server (Rust)"
 license = "GPL-3.0-only"

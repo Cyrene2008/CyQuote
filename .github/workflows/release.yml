@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag (e.g. v0.1.0)'
+        description: 'Release tag (e.g. v0.1.1)'
         required: true
-        default: 'v0.1.0'
+        default: 'v0.1.1'
   push:
     tags: ['v*']
 
@@ -42,11 +42,11 @@ jobs:
         working-directory: server-go
         run: |
           set -euo pipefail
-          mkdir -p ../bin/windows ../bin/linux
+          mkdir -p ../bin/${{ matrix.platform }}/go ../bin/${{ matrix.platform }}/rust
           if [ "${{ matrix.platform }}" = "windows" ]; then
-            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../bin/windows/cyquote.exe .
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H=windowsgui" -o ../bin/${{ matrix.platform }}/go/cyquote.exe .
           else
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../bin/linux/cyquote .
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../bin/${{ matrix.platform }}/go/cyquote .
           fi
 
       - name: Build Rust server
@@ -55,18 +55,25 @@ jobs:
         run: |
           set -euo pipefail
           cargo build --release
-          mkdir -p ../bin/windows ../bin/linux
+          mkdir -p ../bin/${{ matrix.platform }}/rust
           if [ "${{ matrix.platform }}" = "windows" ]; then
-            cp target/release/cyquote.exe ../bin/windows/cyquote-rust.exe
+            cp target/release/cyquote.exe ../bin/${{ matrix.platform }}/rust/cyquote.exe
           else
-            cp target/release/cyquote ../bin/linux/cyquote-rust
+            cp target/release/cyquote ../bin/${{ matrix.platform }}/rust/cyquote
           fi
 
-      - name: Upload artifact
+      - name: Upload Go artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cyquote-${{ matrix.platform }}
-          path: bin/${{ matrix.platform }}/*
+          name: cyquote-${{ matrix.platform }}-go
+          path: bin/${{ matrix.platform }}/go/*
+          if-no-files-found: error
+
+      - name: Upload Rust artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyquote-${{ matrix.platform }}-rust
+          path: bin/${{ matrix.platform }}/rust/*
           if-no-files-found: error
 
   release:
@@ -89,10 +96,10 @@ jobs:
         run: |
           set -euo pipefail
           for dir in assets/cyquote-*; do
-            platform="$(basename "$dir")"
+            name="$(basename "$dir")"
             cp config.example.json "$dir/"
             cp -r scripts "$dir/"
-            (cd "$dir" && zip -r "../${platform}.zip" .)
+            (cd "$dir" && zip -r "../${name}.zip" .)
           done
           ls -la assets
 

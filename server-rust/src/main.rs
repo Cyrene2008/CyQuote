@@ -61,42 +61,42 @@ fn log_line(message: &str) {
 }
 
 fn strip_jsonc(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut in_string = false;
     let mut escaped = false;
-    let bytes = input.as_bytes();
     let mut index = 0;
     while index < bytes.len() {
-        let character = bytes[index] as char;
+        let character = bytes[index];
         if in_string {
             out.push(character);
             if escaped {
                 escaped = false;
-            } else if character == '\\' {
+            } else if character == b'\\' {
                 escaped = true;
-            } else if character == '"' {
+            } else if character == b'"' {
                 in_string = false;
             }
             index += 1;
             continue;
         }
-        if character == '"' {
+        if character == b'"' {
             in_string = true;
             out.push(character);
             index += 1;
             continue;
         }
-        if character == '/' && index + 1 < bytes.len() {
-            if bytes[index + 1] as char == '/' {
-                while index < bytes.len() && bytes[index] as char != '\n' {
+        if character == b'/' && index + 1 < bytes.len() {
+            if bytes[index + 1] == b'/' {
+                while index < bytes.len() && bytes[index] != b'\n' {
                     index += 1;
                 }
-                out.push('\n');
+                out.push(b'\n');
                 continue;
             }
-            if bytes[index + 1] as char == '*' {
+            if bytes[index + 1] == b'*' {
                 index += 2;
-                while index + 1 < bytes.len() && !(bytes[index] as char == '*' && bytes[index + 1] as char == '/') {
+                while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/') {
                     index += 1;
                 }
                 index += 2;
@@ -106,15 +106,16 @@ fn strip_jsonc(input: &str) -> String {
         out.push(character);
         index += 1;
     }
-    let mut cleaned = String::with_capacity(out.len());
+    let cleaned = String::from_utf8_lossy(&out).to_string();
+    let mut result = String::with_capacity(cleaned.len());
     let mut in_string = false;
     let mut escaped = false;
-    let chars: Vec<char> = out.chars().collect();
+    let chars: Vec<char> = cleaned.chars().collect();
     let mut position = 0;
     while position < chars.len() {
         let character = chars[position];
         if in_string {
-            cleaned.push(character);
+            result.push(character);
             if escaped {
                 escaped = false;
             } else if character == '\\' {
@@ -127,7 +128,7 @@ fn strip_jsonc(input: &str) -> String {
         }
         if character == '"' {
             in_string = true;
-            cleaned.push(character);
+            result.push(character);
             position += 1;
             continue;
         }
@@ -141,10 +142,10 @@ fn strip_jsonc(input: &str) -> String {
                 continue;
             }
         }
-        cleaned.push(character);
+        result.push(character);
         position += 1;
     }
-    cleaned
+    result
 }
 
 fn percent_decode(input: &str) -> String {

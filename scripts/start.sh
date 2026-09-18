@@ -3,7 +3,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="${1:-$ROOT/bin/linux/cyquote}"
+BIN="${1:-}"
+if [ -z "$BIN" ]; then
+  for candidate in "$ROOT/cyquote" "$ROOT/bin/linux/cyquote" "$ROOT/cyquote-rust" "$ROOT/bin/linux/cyquote-rust"; do
+    if [ -x "$candidate" ]; then BIN="$candidate"; break; fi
+  done
+fi
+if [ -z "$BIN" ]; then
+  echo "未找到 cyquote 可执行文件，请作为第一个参数传入路径" >&2
+  exit 1
+fi
 BIN="$(readlink -f "$BIN")"
 
 if systemctl list-unit-files 2>/dev/null | grep -q '^cyquote.service'; then
